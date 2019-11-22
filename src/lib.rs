@@ -115,6 +115,16 @@ pub struct Worker {
     time_needed: u32,
 }
 
+impl Timetable<Availability> for Worker {
+    fn ranges(&self) -> &IndexMap<WeekTime, Availability> {
+        &self.availability
+    }
+
+    fn ranges_mut(&mut self) -> &mut IndexMap<WeekTime, Availability> {
+        &mut self.availability
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Availability {
     start: WeekTime,
