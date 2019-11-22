@@ -321,8 +321,6 @@ mod tests {
     mod test_time_range {
         use super::*;
 
-        use chrono::Timelike;
-
         // TimeSpan implements TimeRange for testing.
         #[derive(Debug, Clone, PartialEq, Eq)]
         struct TimeSpan(WeekTime, WeekTime);
