@@ -39,20 +39,6 @@ impl Agenda {
         let blocks = IndexMap::new();
         Agenda { blocks }
     }
-
-    // Return a list of all time blocks in `self.blocks` that overlap with `time_block`.
-    fn find_overlapping(&self, time_block: &TimeBlock) -> Vec<TimeBlock> {
-        self.blocks
-            .values()
-            .filter_map(|block| {
-                if time_block.intersects(block) {
-                    Some(block.clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
 }
 
 impl Timetable<TimeBlock> for Agenda {
@@ -60,55 +46,8 @@ impl Timetable<TimeBlock> for Agenda {
         &self.blocks
     }
 
-    /// Add a [`TimeBlock`] to the Agenda.
-    ///
-    /// If the time block overlaps with any blocks in the Agenda, an Err is returned with a vector
-    /// of all the time blocks it overlapped in ascending order.
-    fn add_range(&mut self, block: TimeBlock) -> Result<(), Vec<TimeBlock>> {
-        let overlapping = self.find_overlapping(&block);
-        if !overlapping.is_empty() {
-            return Err(overlapping);
-        }
-
-        self.blocks.insert(block.start(), block);
-        self.blocks.sort_keys();
-
-        Ok(())
-    }
-
-    /// Add multiple [`TimeBlock`]s to the Agenda.
-    ///
-    /// If any time blocks in `iter` overlap with any blocks in the Agenda, an Err is returned
-    /// with a tuple of `(index, block, overlapping)`, where `block` is the first block in `iter`
-    /// that overlapped, `index` is its index in `iter`, and `overlapping` is a vector of all
-    /// the blocks it overlapped in the Agenda in ascending order. Note that this includes
-    /// duplicates as well.
-    ///
-    /// This is more efficient than calling [`add_range`] individually for each time block.
-    fn add_ranges<T: IntoIterator<Item = TimeBlock>>(
-        &mut self,
-        iter: T,
-    ) -> Result<(), (usize, TimeBlock, Vec<TimeBlock>)> {
-        let mut blocks = Vec::new();
-
-        for (i, block) in iter.into_iter().enumerate() {
-            let overlapping = self.find_overlapping(&block);
-            if !overlapping.is_empty() {
-                return Err((i, block, overlapping));
-            }
-            blocks.push((block.start(), block));
-        }
-
-        self.blocks.extend(blocks);
-        self.blocks.sort_keys();
-        Ok(())
-    }
-
-    /// Remove a time block from the Agenda.
-    ///
-    /// Returns the [`TimeBlock`], or [`None`] if no block exists with the given `start_time`.
-    fn rm_range(&mut self, start_time: WeekTime) -> Option<TimeBlock> {
-        self.blocks.shift_remove(&start_time)
+    fn ranges_mut(&mut self) -> &mut IndexMap<WeekTime, TimeBlock> {
+        &mut self.blocks
     }
 }
 

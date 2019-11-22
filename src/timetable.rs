@@ -254,17 +254,77 @@ pub trait TimeRange: Debug + Clone + PartialEq + Eq {
 }
 
 pub trait Timetable<T: TimeRange> {
+    /// Should return a reference to the ranges map in this `Timetable`.
     fn ranges(&self) -> &IndexMap<WeekTime, T>;
-    fn add_range(&mut self, range: T) -> Result<(), Vec<T>>;
-    fn add_ranges<I: IntoIterator<Item = T>>(&mut self, iter: I) -> Result<(), (usize, T, Vec<T>)>;
-    fn rm_range(&mut self, start: WeekTime) -> Option<T>;
 
-    fn find_overlapping(&self, time_range: &T) -> Vec<T> {
+    /// Should return a mutable reference to the ranges map in this `Timetable`.
+    ///
+    /// Avoid using this method directly. Instead, use [`add_range`], [`add_ranges`], and
+    /// [`rm_range`] to safely modify the `Timetable`.
+    fn ranges_mut(&mut self) -> &mut IndexMap<WeekTime, T>;
+
+    /// Adds a [`TimeBlock`] to the Agenda.
+    ///
+    /// If the time block overlaps with any blocks in the Agenda, an Err is returned with a vector
+    /// of all the time blocks it overlapped in ascending order.
+    fn add_range(&mut self, range: T) -> Result<(), Vec<T>> {
+        let overlapping = self.find_overlapping(&range);
+        if !overlapping.is_empty() {
+            return Err(overlapping);
+        }
+
+        let rs = self.ranges_mut();
+        rs.insert(range.start(), range);
+        rs.sort_keys();
+
+        Ok(())
+    }
+
+    /// Adds multiple [`T`]s to the Agenda.
+    ///
+    /// If any time blocks in `iter` overlap with any blocks in the Agenda, an Err is returned
+    /// with a tuple of `(index, block, overlapping)`, where `block` is the first block in `iter`
+    /// that overlapped, `index` is its index in `iter`, and `overlapping` is a vector of all
+    /// the blocks it overlapped in the Agenda in ascending order. Note that this includes
+    /// duplicates as well.
+    ///
+    /// This is more efficient than calling [`add_range`] individually for each time block.
+    fn add_ranges<I: IntoIterator<Item = T>>(&mut self, iter: I) -> Result<(), (usize, T, Vec<T>)> {
+        let mut ranges = Vec::new();
+
+        for (i, range) in iter.into_iter().enumerate() {
+            let overlapping = self.find_overlapping(&range);
+            if !overlapping.is_empty() {
+                return Err((i, range, overlapping));
+            }
+            ranges.push(range);
+        }
+
+        let rs = self.ranges_mut();
+        for range in ranges {
+            rs.insert(range.start(), range);
+        }
+        rs.sort_keys();
+
+        Ok(())
+    }
+
+    /// Removes the range with the given `start_time`.
+    ///
+    /// Returns the removed range, or [`None`] if it can't be found.
+    fn rm_range(&mut self, start_time: WeekTime) -> Option<T> {
+        self.ranges_mut().shift_remove(&start_time)
+    }
+
+    /// Returns all ranges in `self.ranges()` that are overlapped by `range`.
+    ///
+    /// This is used by [`add_range`] and [`add_ranges`] to validate incoming ranges.
+    fn find_overlapping(&self, range: &T) -> Vec<T> {
         self.ranges()
             .values()
-            .filter_map(|range| {
-                if time_range.intersects(range) {
-                    Some(range.clone())
+            .filter_map(|r| {
+                if range.intersects(r) {
+                    Some(r.clone())
                 } else {
                     None
                 }
