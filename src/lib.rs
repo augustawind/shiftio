@@ -29,6 +29,14 @@ impl TimeRange {
         Some(TimeRange { start, end })
     }
 
+    pub fn start(&self) -> DateTime<Utc> {
+        self.start
+    }
+
+    pub fn end(&self) -> DateTime<Utc> {
+        self.end
+    }
+
     /// Returns `true` if this `TimeRange` and the given `range` overlap.
     pub fn intersects(&self, range: &TimeRange) -> bool {
         range.start < self.end && range.end > self.start
@@ -111,4 +119,57 @@ pub struct Agent {
     availability: Vec<TimeRange>,
     // Time needed by this Agent, in minutes.
     time_needed: u32,
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    mod test_time_range {
+        use super::*;
+
+        #[test]
+        fn test_new() {
+            let start = Utc::now();
+            let end = start + Duration::hours(8);
+            let range = TimeRange::new(start, end).unwrap();
+            assert!(range.end() - range.start() == Duration::hours(8));
+
+            let start = Utc::now();
+            let end = start.clone();
+            assert!(
+                TimeRange::new(start, end).is_none(),
+                "it should fail if start == end"
+            );
+
+            let start = Utc::now();
+            let end = start - Duration::hours(1);
+            assert!(
+                TimeRange::new(start, end).is_none(),
+                "it should fail if start > end"
+            );
+        }
+
+        #[test]
+        fn test_from_duration() {
+            let start = Utc::now();
+            let duration = Duration::hours(8);
+            let range = TimeRange::from_duration(start, duration).unwrap();
+            assert!(range.end() - range.start() == Duration::hours(8));
+
+            let start = Utc::now();
+            let duration = Duration::zero();
+            assert!(
+                TimeRange::from_duration(start, duration).is_none(),
+                "it should fail if duration is zero"
+            );
+
+            let start = Utc::now();
+            let duration = Duration::minutes(-30);
+            assert!(
+                TimeRange::from_duration(start, duration).is_none(),
+                "it should fail if duration is negative"
+            );
+        }
+    }
 }
