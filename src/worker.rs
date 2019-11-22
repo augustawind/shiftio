@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::iter::FromIterator;
 
 pub use chrono::Weekday;
 use indexmap::IndexMap;
@@ -20,9 +21,12 @@ impl Roster {
         Roster { workers }
     }
 
-    /// Returns a map of names to workers.
-    pub fn workers(&self) -> &HashMap<String, Worker> {
-        &self.workers
+    pub fn names<'a, B: FromIterator<&'a str>>(&'a self) -> B {
+        self.workers.keys().map(AsRef::as_ref).collect()
+    }
+
+    pub fn workers<'a, B: FromIterator<&'a Worker>>(&'a self) -> B {
+        self.workers.values().collect()
     }
 
     /// Returns a reference to the worker with the given `name`.
@@ -164,14 +168,7 @@ mod tests {
         assert!(roster.add_worker(wk("jen")).is_ok());
         assert_eq!(roster.get_worker("jen"), Some(&wk("jen")));
         assert_eq!(roster.get_worker("brad"), None);
-        assert_eq!(
-            roster
-                .workers()
-                .keys()
-                .cloned()
-                .collect::<HashSet<String>>(),
-            set![s("bob"), s("steve"), s("jen")],
-        );
+        assert_eq!(roster.names::<HashSet<&str>>(), set!["bob", "steve", "jen"]);
 
         // try to add another steve
         assert_eq!(
@@ -179,14 +176,7 @@ mod tests {
             Err(wk("steve")),
             "should return the dupe worker when adding a worker with the same name",
         );
-        assert_eq!(
-            roster
-                .workers()
-                .keys()
-                .cloned()
-                .collect::<HashSet<String>>(),
-            set![s("bob"), s("steve"), s("jen")],
-        );
+        assert_eq!(roster.names::<HashSet<&str>>(), set!["bob", "steve", "jen"]);
 
         // remove steve and then add him back
         assert_eq!(roster.rm_worker("steve").unwrap(), wk("steve"));
@@ -194,13 +184,6 @@ mod tests {
 
         assert!(roster.add_worker(wk("steve")).is_ok());
         assert_eq!(roster.get_worker("steve"), Some(&wk("steve")));
-        assert_eq!(
-            roster
-                .workers()
-                .keys()
-                .cloned()
-                .collect::<HashSet<String>>(),
-            set![s("bob"), s("steve"), s("jen")],
-        );
+        assert_eq!(roster.names::<HashSet<&str>>(), set!["bob", "steve", "jen"]);
     }
 }
