@@ -237,10 +237,16 @@ impl Timetable {
         Ok(())
     }
 
-    /// Add multiple [`Timeblock`]s to the Timetable.
+    /// Add multiple [`TimeBlock`]s to the Timetable.
     ///
-    /// This is more efficient than calling [`add_block`] individually for each timeblock.
-    pub fn add_blocks<T: IntoIterator<Item = Timeblock>>(
+    /// If any time blocks in `iter` overlap with any blocks in the Timetable, an Err is returned
+    /// with a tuple of `(index, block, overlapping)`, where `block` is the first block in `iter`
+    /// that overlapped, `index` is its index in `iter`, and `overlapping` is a vector of all
+    /// the blocks it overlapped in the Timetable in ascending order. Note that this includes
+    /// duplicates as well.
+    ///
+    /// This is more efficient than calling [`add_block`] individually for each time block.
+    pub fn add_blocks<T: IntoIterator<Item = TimeBlock>>(
         &mut self,
         iter: T,
     ) -> Result<(), (usize, Timeblock, Vec<Timeblock>)> {
@@ -256,11 +262,12 @@ impl Timetable {
         Ok(())
     }
 
-    fn find_overlapping(&self, timeblock: &Timeblock) -> Vec<Timeblock> {
+    // Return a list of all time blocks in `self.blocks` that overlap with `time_block`.
+    fn find_overlapping(&self, time_block: &TimeBlock) -> Vec<TimeBlock> {
         self.blocks
             .values()
             .filter_map(|block| {
-                if timeblock.range.intersects(&block.range) {
+                if time_block.range.intersects(&block.range) {
                     Some(block.clone())
                 } else {
                     None
