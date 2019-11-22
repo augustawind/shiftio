@@ -2,14 +2,17 @@ use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::ops::{Add, Sub};
 
-use chrono::{DateTime, Datelike, NaiveTime, TimeZone, Utc, Weekday};
+use chrono::{DateTime, Datelike, NaiveTime, TimeZone, Timelike, Utc, Weekday};
 use indexmap::IndexMap;
 use time::Duration;
 
 const DUMMY_YEAR: i32 = 1970;
 const DUMMY_WEEK: u32 = 1;
 
-/// Represents a naive time on a day of the week.
+/// Represents a specific time of day on a specific day of the week.
+///
+/// Has no concept of time other than day of week and time of day. Weeks begin on Monday and end on
+/// Sunday. Time of day has minute-precision: seconds, nanoseconds, etc. are ignored.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WeekTime {
     weekday: Weekday,
@@ -28,45 +31,6 @@ impl Ord for WeekTime {
             Ordering::Equal => self.time.cmp(&other.time),
             ord => ord,
         }
-    }
-}
-
-impl WeekTime {
-    /// Create a new `WeekTime` from a weekday, an hour, and a minute.
-    pub fn new(weekday: Weekday, hour: u32, min: u32) -> Option<Self> {
-        let time = NaiveTime::from_hms_opt(hour, min, 0)?;
-        Some(Self::from_time(weekday, time))
-    }
-
-    /// Create a new `WeekTime` from a weekday and a naive time.
-    pub fn from_time(weekday: Weekday, time: NaiveTime) -> Self {
-        WeekTime { weekday, time }
-    }
-
-    fn dt(&self) -> DateTime<Utc> {
-        // WARNING: using `unwrap()` here because it doesn't look like it's possible for this
-        // to fail when using the `Utc` timezone. Handle this properly if you ever change the TZ.
-        Utc.isoywd(DUMMY_YEAR, DUMMY_WEEK, self.weekday)
-            .and_time(self.time)
-            .unwrap()
-    }
-
-    /// Returns the weekday as a number from 0-6.
-    pub fn day_of_week(&self) -> u32 {
-        self.weekday.num_days_from_monday()
-    }
-
-    /// Returns the number of days from `self.weekday` to the end of the week.
-    /// Sunday is considered the end of the week. The result will be a uint in the range `[0..6]`,
-    /// e.g. if `self.weekday` is Sunday this function will return `0`.
-    pub fn days_left_in_week(&self) -> u32 {
-        6 - self.day_of_week()
-    }
-
-    /// Return the number of
-    pub fn seconds_until_tomorrow(&self) -> u32 {
-        let time = self.time - NaiveTime::from_hms(0, 0, 0);
-        (Duration::hours(24) - time).num_seconds() as u32
     }
 }
 
@@ -99,6 +63,49 @@ impl Sub<WeekTime> for WeekTime {
 
     fn sub(self, weektime: WeekTime) -> Duration {
         self.dt() - weektime.dt()
+    }
+}
+
+impl WeekTime {
+    /// Create a new `WeekTime` from a weekday, an hour, and a minute.
+    pub fn new(weekday: Weekday, hour: u32, min: u32) -> Option<Self> {
+        let time = NaiveTime::from_hms_opt(hour, min, 0)?;
+        Some(Self::from_time(weekday, time))
+    }
+
+    /// Create a new `WeekTime` from a weekday and a naive time.
+    pub fn from_time(weekday: Weekday, time: NaiveTime) -> Self {
+        // Ignore seconds.
+        let time = NaiveTime::from_hms(time.hour(), time.minute(), 0);
+        WeekTime { weekday, time }
+    }
+
+    // Return a full DateTime object suitable for arithmetic and ordinal comparisons with other
+    // WeekTime objects. Used behind the scenes to implement `Ord`, `Add`, `Sub`, etc.
+    fn dt(&self) -> DateTime<Utc> {
+        // WARNING: using `unwrap()` here because it doesn't look like it's possible for this
+        // to fail when using the `Utc` timezone. Handle this properly if you ever change the TZ.
+        Utc.isoywd(DUMMY_YEAR, DUMMY_WEEK, self.weekday)
+            .and_time(self.time)
+            .unwrap()
+    }
+
+    /// Returns the weekday as a number from 0-6.
+    pub fn day_of_week(&self) -> u32 {
+        self.weekday.num_days_from_monday()
+    }
+
+    /// Returns the number of days from `self.weekday` to the end of the week.
+    /// Sunday is considered the end of the week. The result will be a uint in the range `[0..6]`,
+    /// e.g. if `self.weekday` is Sunday this function will return `0`.
+    pub fn days_left_in_week(&self) -> u32 {
+        6 - self.day_of_week()
+    }
+
+    /// Return the number of
+    pub fn seconds_until_tomorrow(&self) -> u32 {
+        let time = self.time - NaiveTime::from_hms(0, 0, 0);
+        (Duration::hours(24) - time).num_seconds() as u32
     }
 }
 
