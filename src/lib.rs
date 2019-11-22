@@ -57,6 +57,19 @@ impl WeekTime {
     pub fn dt(&self) -> DateTime<Utc> {
         self.datetime
     }
+
+    /// Returns the number of days from `self.weekday` to the end of the week.
+    /// Sunday is considered the end of the week. The result will be a uint in the range `[0..6]`,
+    /// e.g. if `self.weekday` is Sunday this function will return `0`.
+    pub fn days_left_in_week(&self) -> u32 {
+        6 - self.weekday.num_days_from_monday()
+    }
+
+    /// Return the number of
+    pub fn seconds_until_tomorrow(&self) -> u32 {
+        let time = self.time - NaiveTime::from_hms(0, 0, 0);
+        (Duration::hours(24) - time).num_seconds() as u32
+    }
 }
 
 impl Add<Duration> for WeekTime {
@@ -111,7 +124,11 @@ impl TimeRange {
     }
 
     /// Create a new TimeRange from a start time and a duration.
-    /// Returns [`None`] if `duration` is zero or negative.
+    ///
+    /// Calculates the end time by adding the duration to the start time. Returns [`None`] if
+    /// `duration` is zero or negative, or if the end time would be in a different week (weeks start
+    /// on Monday and end on Sunday). For example, if `start` is on a Friday and `duration` is 3
+    /// days, the end time would be on Monday of next week, so [`None`] would be returned.
     pub fn from_duration(start: WeekTime, duration: Duration) -> Option<Self> {
         // TODO: insert these debug stmts into actual errors in a Result.
 
@@ -122,7 +139,7 @@ impl TimeRange {
         }
 
         // Assert duration is not longer than remaining time in week.
-        let days_left = 6 - start.weekday.num_days_from_monday() as i64;
+        let days_left = start.days_left_in_week() as i64;
         match duration.num_days().cmp(&days_left) {
             Ordering::Greater => {
                 eprintln!(
@@ -134,9 +151,8 @@ impl TimeRange {
                 return None;
             }
             Ordering::Equal => {
-                let delta = start.time - NaiveTime::from_hms(0, 0, 0);
-                let time_left = Duration::hours(24) - delta;
-                if duration.num_seconds() > time_left.num_seconds() as i64 {
+                let time_left = start.seconds_until_tomorrow() as i64;
+                if duration.num_seconds() > time_left {
                     eprintln!(
                         "Duration is {} seconds ({} minutes) past the end of the week.",
                         duration.num_seconds(),
