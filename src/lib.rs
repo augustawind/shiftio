@@ -210,30 +210,52 @@ impl Timetable {
         Self { blocks }
     }
 
-    /// Add a time range to the Timetable.
-    /// If `range` overlaps with any ranges already in the Timetable, an Err is returned with a
-    /// vector of all the ranges that intersect with `range`, in ascending order.
-    pub fn add_time(&mut self, range: TimeRange, min_agents: u32) -> Result<(), Vec<TimeRange>> {
-        let overlapping: Vec<TimeRange> = self
-            .blocks
-            .values()
-            .filter_map(|block| {
-                if range.intersects(&block.range) {
-                    Some(block.range.clone())
-                } else {
-                    None
-                }
-            })
-            .collect();
+    /// Add a [`Timeblock`] to the Timetable.
+    ///
+    /// If the timeblock overlaps with any ranges already in the Timetable, an Err is returned with a
+    /// vector of all the overlapping timeblocks in ascending order.
+    pub fn add_block(&mut self, block: Timeblock) -> Result<(), Vec<Timeblock>> {
+        let overlapping = self.find_overlapping(&block);
         if !overlapping.is_empty() {
             return Err(overlapping);
         }
 
-        self.blocks
-            .insert(range.start, Timeblock { range, min_agents });
+        self.blocks.insert(block.range.start, block);
         self.blocks.sort_keys();
 
         Ok(())
+    }
+
+    /// Add multiple [`Timeblock`]s to the Timetable.
+    ///
+    /// This is more efficient than calling [`add_block`] individually for each timeblock.
+    pub fn add_blocks<T: IntoIterator<Item = Timeblock>>(
+        &mut self,
+        iter: T,
+    ) -> Result<(), (usize, Timeblock, Vec<Timeblock>)> {
+        for (i, block) in iter.into_iter().enumerate() {
+            let overlapping = self.find_overlapping(&block);
+            if !overlapping.is_empty() {
+                return Err((i, block, overlapping));
+            }
+            self.blocks.insert(block.range.start, block);
+        }
+
+        self.blocks.sort_keys();
+        Ok(())
+    }
+
+    fn find_overlapping(&self, timeblock: &Timeblock) -> Vec<Timeblock> {
+        self.blocks
+            .values()
+            .filter_map(|block| {
+                if timeblock.range.intersects(&block.range) {
+                    Some(block.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 }
 
