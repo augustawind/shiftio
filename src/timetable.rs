@@ -19,13 +19,16 @@ pub struct WeekTime {
 
 impl PartialOrd for WeekTime {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.datetime.partial_cmp(&other.dt())
+        Some(self.cmp(other))
     }
 }
 
 impl Ord for WeekTime {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.datetime.cmp(&other.dt())
+        match self.day_of_week().cmp(&other.day_of_week()) {
+            Ordering::Equal => self.time.cmp(&other.time),
+            ord => ord,
+        }
     }
 }
 
@@ -33,7 +36,7 @@ impl WeekTime {
     /// Create a new `WeekTime` from a weekday, an hour, and a minute.
     pub fn new(weekday: Weekday, hour: u32, min: u32) -> Option<Self> {
         let time = NaiveTime::from_hms_opt(hour, min, 0)?;
-        let datetime = Self::dt_from_weekday_and_time(weekday, time);
+        let datetime = Self::new_datetime(weekday, time);
         Some(WeekTime {
             weekday,
             time,
@@ -43,7 +46,7 @@ impl WeekTime {
 
     /// Create a new `WeekTime` from a weekday and a naive time.
     pub fn from_time(weekday: Weekday, time: NaiveTime) -> Self {
-        let datetime = Self::dt_from_weekday_and_time(weekday, time);
+        let datetime = Self::new_datetime(weekday, time);
         WeekTime {
             weekday,
             time,
@@ -51,7 +54,7 @@ impl WeekTime {
         }
     }
 
-    fn dt_from_weekday_and_time(weekday: Weekday, time: NaiveTime) -> DateTime<Utc> {
+    fn new_datetime(weekday: Weekday, time: NaiveTime) -> DateTime<Utc> {
         // WARNING: using `unwrap()` here because it doesn't look like it's possible for this
         // to fail when using the `Utc` timezone. Handle this properly if you ever change the TZ.
         Utc.isoywd(DUMMY_YEAR, DUMMY_WEEK, weekday)
@@ -63,11 +66,16 @@ impl WeekTime {
         self.datetime
     }
 
+    /// Returns the weekday as a number from 0-6.
+    pub fn day_of_week(&self) -> u32 {
+        self.weekday.num_days_from_monday()
+    }
+
     /// Returns the number of days from `self.weekday` to the end of the week.
     /// Sunday is considered the end of the week. The result will be a uint in the range `[0..6]`,
     /// e.g. if `self.weekday` is Sunday this function will return `0`.
     pub fn days_left_in_week(&self) -> u32 {
-        6 - self.weekday.num_days_from_monday()
+        6 - self.day_of_week()
     }
 
     /// Return the number of
