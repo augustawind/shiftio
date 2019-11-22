@@ -14,11 +14,17 @@ pub struct Roster {
 }
 
 impl Roster {
+    /// Returns a new, empty Roster.
     pub fn new() -> Self {
         let workers = HashMap::new();
         Roster { workers }
     }
 
+    /// Adds a worker to the Roster.
+    ///
+    /// Each worker's `name` must be unique in the Roster. If the worker's name is already in use,
+    /// this method will fail and return an Err with a copy of the worker that is causing the
+    /// conflict.
     pub fn add_worker(&mut self, worker: Worker) -> Result<(), Worker> {
         if let Some(other) = self.workers.get(&worker.name).cloned() {
             return Err(other);
@@ -50,6 +56,7 @@ impl Timetable<Availability> for Worker {
 }
 
 impl Worker {
+    /// Returns a new Worker with the given parameters.
     pub fn new<T: ToString>(name: T, hours_needed: Duration) -> Option<Self> {
         // TODO: proper errors
         if hours_needed <= Duration::zero() {
@@ -67,6 +74,7 @@ impl Worker {
     }
 }
 
+/// Represents a range of time that a Worker is available to work.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Availability {
     start: WeekTime,
