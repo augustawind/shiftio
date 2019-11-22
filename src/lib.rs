@@ -265,6 +265,13 @@ impl Timetable {
         Ok(())
     }
 
+    /// Remove a time block from the Timetable.
+    ///
+    /// Returns the [`TimeBlock`], or [`None`] if no block exists with the given `start_time`.
+    pub fn rm_block(&mut self, start_time: &WeekTime) -> Option<TimeBlock> {
+        self.blocks.shift_remove(start_time)
+    }
+
     // Return a list of all time blocks in `self.blocks` that overlap with `time_block`.
     fn find_overlapping(&self, time_block: &TimeBlock) -> Vec<TimeBlock> {
         self.blocks
@@ -527,6 +534,25 @@ mod test {
                 tt.blocks().values().collect::<Vec<&TimeBlock>>(),
                 vec![&b1, &b2, &b3, &b4, &b5],
                 "no blocks should be added if any were overlapping",
+            );
+        }
+
+        #[test]
+        fn test_rm_block() {
+            let mut tt = Timetable::new();
+            let (_, block2, _, block4, block5) = def_blocks();
+            let (_, b2, _, b4, _) = def_blocks();
+
+            tt.add_block(block2).unwrap();
+            tt.add_block(block4).unwrap();
+            assert_eq!(tt.rm_block(&b2.range.start), Some(b2.clone()));
+            assert_eq!(tt.blocks().values().collect::<Vec<&TimeBlock>>(), vec![&b4],);
+
+            assert_eq!(tt.rm_block(&block5.range.start), None);
+            assert_eq!(
+                tt.blocks().values().collect::<Vec<&TimeBlock>>(),
+                vec![&b4],
+                "if rm_block() doesn't find anything, nothing should be changed",
             );
         }
     }
