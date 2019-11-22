@@ -14,7 +14,6 @@ const DUMMY_WEEK: u32 = 1;
 pub struct WeekTime {
     weekday: Weekday,
     time: NaiveTime,
-    datetime: DateTime<Utc>,
 }
 
 impl PartialOrd for WeekTime {
@@ -36,34 +35,20 @@ impl WeekTime {
     /// Create a new `WeekTime` from a weekday, an hour, and a minute.
     pub fn new(weekday: Weekday, hour: u32, min: u32) -> Option<Self> {
         let time = NaiveTime::from_hms_opt(hour, min, 0)?;
-        let datetime = Self::new_datetime(weekday, time);
-        Some(WeekTime {
-            weekday,
-            time,
-            datetime,
-        })
+        Some(Self::from_time(weekday, time))
     }
 
     /// Create a new `WeekTime` from a weekday and a naive time.
     pub fn from_time(weekday: Weekday, time: NaiveTime) -> Self {
-        let datetime = Self::new_datetime(weekday, time);
-        WeekTime {
-            weekday,
-            time,
-            datetime,
-        }
+        WeekTime { weekday, time }
     }
 
-    fn new_datetime(weekday: Weekday, time: NaiveTime) -> DateTime<Utc> {
+    fn dt(&self) -> DateTime<Utc> {
         // WARNING: using `unwrap()` here because it doesn't look like it's possible for this
         // to fail when using the `Utc` timezone. Handle this properly if you ever change the TZ.
-        Utc.isoywd(DUMMY_YEAR, DUMMY_WEEK, weekday)
-            .and_time(time)
+        Utc.isoywd(DUMMY_YEAR, DUMMY_WEEK, self.weekday)
+            .and_time(self.time)
             .unwrap()
-    }
-
-    pub fn dt(&self) -> DateTime<Utc> {
-        self.datetime
     }
 
     /// Returns the weekday as a number from 0-6.
@@ -89,11 +74,10 @@ impl Add<Duration> for WeekTime {
     type Output = Self;
 
     fn add(self, duration: Duration) -> Self {
-        let datetime = self.datetime + duration;
+        let datetime = self.dt() + duration;
         WeekTime {
             weekday: datetime.weekday(),
             time: datetime.time(),
-            datetime,
         }
     }
 }
@@ -102,11 +86,10 @@ impl Sub<Duration> for WeekTime {
     type Output = Self;
 
     fn sub(self, duration: Duration) -> Self {
-        let datetime = self.datetime - duration;
+        let datetime = self.dt() - duration;
         WeekTime {
             weekday: datetime.weekday(),
             time: datetime.time(),
-            datetime,
         }
     }
 }
@@ -115,7 +98,7 @@ impl Sub<WeekTime> for WeekTime {
     type Output = Duration;
 
     fn sub(self, weektime: WeekTime) -> Duration {
-        self.datetime - weektime.datetime
+        self.dt() - weektime.dt()
     }
 }
 
@@ -227,29 +210,11 @@ pub trait TimeRange: Debug + Clone + PartialEq + Eq {
 
         // Assert duration is not longer than remaining time in week.
         let days_left = start.days_left_in_week() as i64;
-        match duration.num_days().cmp(&days_left) {
-            Ordering::Greater => {
-                eprintln!(
-                    "Duration is {} days, but only {} day(s) are left in the week (from {:?}).",
-                    duration.num_days(),
-                    days_left,
-                    start.weekday,
-                );
-                return None;
-            }
-            Ordering::Equal => {
-                let time_left = start.seconds_until_tomorrow() as i64;
-                if duration.num_seconds() > time_left {
-                    eprintln!(
-                        "Duration is {} seconds ({} minutes) past the end of the week.",
-                        duration.num_seconds(),
-                        duration.num_minutes(),
-                    );
-                    return None;
-                }
-            }
-            _ => (),
-        };
+        let seconds_left = start.seconds_until_tomorrow() as i64;
+
+        if duration >= Duration::days(days_left) + Duration::seconds(seconds_left) {
+            return None;
+        }
 
         let end = start + duration;
         Some((start, end))
@@ -399,15 +364,14 @@ mod tests {
             let start = wt();
             let duration = Duration::hours(8);
             let range = TimeSpan::from_duration(start, duration).unwrap();
-            assert_eq!(range.end() - range.start(), Duration::hours(8));
+            assert_eq!(range.end() - range.start(), duration);
 
             // happy path (maximum possible duration)
             let start = wt_with(Weekday::Sun, 20);
-            let duration = Duration::hours(4);
+            let duration = Duration::hours(3) + Duration::minutes(59);
             let range = TimeSpan::from_duration(start, duration).unwrap();
-            assert_eq!(range.end().weekday, Weekday::Mon);
-            assert_eq!(range.end().time.num_seconds_from_midnight(), 0);
-            assert_eq!(range.end() - range.start(), Duration::hours(4));
+            assert_eq!(range.end().weekday, Weekday::Sun);
+            assert_eq!(range.end() - range.start(), duration);
 
             let start = wt();
             let duration = Duration::zero();
@@ -435,6 +399,13 @@ mod tests {
             assert!(
                 TimeSpan::from_duration(start, duration).is_none(),
                 "it should fail if duration is next week (< 1 day)"
+            );
+
+            let start = wt_with(Weekday::Sun, 20);
+            let duration = Duration::hours(4);
+            assert!(
+                TimeSpan::from_duration(start, duration).is_none(),
+                "it should fail if duration is next week (even at 0)",
             );
         }
 
