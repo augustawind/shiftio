@@ -307,7 +307,37 @@ mod test {
 
         #[test]
         fn test_intersects() {
-            let start = wt();
+            let start = WeekTime::new(Weekday::Tue, 12, 0).unwrap();
+            let end = WeekTime::new(Weekday::Thu, 12, 0).unwrap();
+            let range = TimeRange::new(start, end).unwrap();
+
+            // f:  [-----]  (-----)
+            let start = WeekTime::new(Weekday::Mon, 0, 0).unwrap();
+            let end = WeekTime::new(Weekday::Tue, 10, 30).unwrap();
+            let r = TimeRange::new(start, end).unwrap();
+            assert!(!range.intersects(&r));
+            assert!(!r.intersects(&range));
+
+            // f:  [-----](-----)
+            let start = WeekTime::new(Weekday::Mon, 0, 0).unwrap();
+            let end = WeekTime::new(Weekday::Tue, 12, 0).unwrap();
+            let r = TimeRange::new(start, end).unwrap();
+            assert!(!range.intersects(&r));
+            assert!(!r.intersects(&range));
+
+            // t:  [---(-]---)
+            let start = WeekTime::new(Weekday::Mon, 0, 0).unwrap();
+            let end = WeekTime::new(Weekday::Tue, 13, 0).unwrap();
+            let r = TimeRange::new(start, end).unwrap();
+            assert!(range.intersects(&r));
+            assert!(r.intersects(&range));
+
+            // t: [--(-----)-]
+            let start = WeekTime::new(Weekday::Mon, 0, 0).unwrap();
+            let end = WeekTime::new(Weekday::Thu, 14, 0).unwrap();
+            let r = TimeRange::new(start, end).unwrap();
+            assert!(range.intersects(&r));
+            assert!(r.intersects(&range));
         }
     }
 }
