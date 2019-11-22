@@ -1,18 +1,109 @@
-use chrono::{DateTime, Utc};
+use std::cmp::Ordering;
+use std::ops::{Add, Sub};
+
+use chrono::{DateTime, Datelike, NaiveTime, TimeZone, Timelike, Utc, Weekday};
 use indexmap::IndexMap;
 use time::Duration;
+
+const DEFAULT_YEAR: i32 = 1970;
+const DEFAULT_WEEK: u32 = 1;
+
+/// Represents a naive time on a day of the week.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct WeekTime {
+    weekday: Weekday,
+    time: NaiveTime,
+    datetime: DateTime<Utc>,
+}
+
+impl PartialOrd for WeekTime {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.datetime.partial_cmp(&other.dt())
+    }
+}
+
+impl Ord for WeekTime {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.datetime.cmp(&other.dt())
+    }
+}
+
+impl WeekTime {
+    /// Create a new `WeekTime` from a weekday and a naive time.
+    pub fn new(weekday: Weekday, time: NaiveTime) -> Option<Self> {
+        let datetime = Self::dt_from_weekday_and_time(weekday, time)?;
+        Some(WeekTime {
+            weekday,
+            time,
+            datetime,
+        })
+    }
+
+    pub fn from_hms(weekday: Weekday, hour: u32, min: u32, sec: u32) -> Option<Self> {
+        let time = NaiveTime::from_hms_opt(hour, min, sec)?;
+        let datetime = Self::dt_from_weekday_and_time(weekday, time).unwrap();
+        Some(WeekTime {
+            weekday,
+            time,
+            datetime,
+        })
+    }
+
+    fn dt_from_weekday_and_time(weekday: Weekday, time: NaiveTime) -> Option<DateTime<Utc>> {
+        Utc.isoywd(DEFAULT_YEAR, DEFAULT_WEEK, weekday)
+            .and_time(time)
+    }
+
+    pub fn dt(&self) -> DateTime<Utc> {
+        self.datetime
+    }
+}
+
+impl Add<Duration> for WeekTime {
+    type Output = Self;
+
+    fn add(self, duration: Duration) -> Self {
+        let datetime = self.datetime + duration;
+        WeekTime {
+            weekday: datetime.weekday(),
+            time: datetime.time(),
+            datetime,
+        }
+    }
+}
+
+impl Sub<Duration> for WeekTime {
+    type Output = Self;
+
+    fn sub(self, duration: Duration) -> Self {
+        let datetime = self.datetime - duration;
+        WeekTime {
+            weekday: datetime.weekday(),
+            time: datetime.time(),
+            datetime,
+        }
+    }
+}
+
+impl Sub<WeekTime> for WeekTime {
+    type Output = Duration;
+
+    fn sub(self, weektime: WeekTime) -> Duration {
+        self.datetime - weektime.datetime
+    }
+}
 
 /// Represents a non-zero range of time with a start and end.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimeRange {
-    start: DateTime<Utc>,
-    end: DateTime<Utc>,
+    start: WeekTime,
+    end: WeekTime,
 }
 
 impl TimeRange {
-    /// Create a new TimeRange from absolute start and end times.
+    /// Create a new TimeRange from start and end times.
     /// Returns [`None`] if `end` is not later than `start`.
-    pub fn new(start: DateTime<Utc>, end: DateTime<Utc>) -> Option<Self> {
+    pub fn new(start: WeekTime, end: WeekTime) -> Option<Self> {
         if end <= start {
             return None;
         }
@@ -21,19 +112,52 @@ impl TimeRange {
 
     /// Create a new TimeRange from a start time and a duration.
     /// Returns [`None`] if `duration` is zero or negative.
-    pub fn from_duration(start: DateTime<Utc>, duration: Duration) -> Option<Self> {
+    pub fn from_duration(start: WeekTime, duration: Duration) -> Option<Self> {
+        // TODO: insert these debug stmts into actual errors in a Result.
+
+        // Assert duration is greater than zero.
         if duration <= Duration::zero() {
+            eprintln!("Duration is <= zero.");
             return None;
         }
+
+        // Assert duration is not longer than remaining time in week.
+        let days_left = 6 - start.weekday.num_days_from_sunday() as i64;
+        match duration.num_days().cmp(&days_left) {
+            Ordering::Greater => {
+                eprintln!(
+                    "Duration is {} days, but there are only {} days left in the week (from {:?}).",
+                    duration.num_days(),
+                    days_left,
+                    start.weekday,
+                );
+                return None;
+            }
+            Ordering::Equal => {
+                let time_left = start.time - Duration::hours(24);
+                if duration.num_seconds() > time_left.num_seconds_from_midnight() as i64 {
+                    eprintln!(
+                        "Duration is {} seconds ({} minutes) past the end of the week.",
+                        duration.num_seconds(),
+                        duration.num_minutes(),
+                    );
+                    return None;
+                }
+            }
+            _ => (),
+        };
+
         let end = start + duration;
         Some(TimeRange { start, end })
     }
 
-    pub fn start(&self) -> DateTime<Utc> {
+    /// Returns the lower boundary the TimeRange.
+    pub fn start(&self) -> WeekTime {
         self.start
     }
 
-    pub fn end(&self) -> DateTime<Utc> {
+    /// Returns the upper boundary the TimeRange.
+    pub fn end(&self) -> WeekTime {
         self.end
     }
 
@@ -60,7 +184,7 @@ impl Schedule {
 pub struct Timetable {
     // A mapping of start times to `Timeblock` objects.
     // The key for each `Timeblock` is its start time.
-    blocks: IndexMap<DateTime<Utc>, Timeblock>,
+    blocks: IndexMap<WeekTime, Timeblock>,
 }
 
 impl Timetable {
@@ -89,7 +213,7 @@ impl Timetable {
         }
 
         self.blocks
-            .insert(range.start.clone(), Timeblock { range, min_agents });
+            .insert(range.start, Timeblock { range, min_agents });
         self.blocks.sort_keys();
 
         Ok(())
@@ -125,24 +249,32 @@ pub struct Agent {
 mod test {
     use super::*;
 
+    fn dt() -> DateTime<Utc> {
+        Utc.ymd(1991, 11, 14).and_hms(16, 34, 0)
+    }
+
+    fn wt() -> WeekTime {
+        WeekTime::new(Weekday::Thu, NaiveTime::from_hms(11, 22, 33)).unwrap()
+    }
+
     mod test_time_range {
         use super::*;
 
         #[test]
         fn test_new() {
-            let start = Utc::now();
-            let end = start + Duration::hours(8);
+            let start = wt();
+            let end = wt() + Duration::hours(8);
             let range = TimeRange::new(start, end).unwrap();
             assert!(range.end() - range.start() == Duration::hours(8));
 
-            let start = Utc::now();
-            let end = start.clone();
+            let start = wt();
+            let end = start;
             assert!(
                 TimeRange::new(start, end).is_none(),
                 "it should fail if start == end"
             );
 
-            let start = Utc::now();
+            let start = wt();
             let end = start - Duration::hours(1);
             assert!(
                 TimeRange::new(start, end).is_none(),
@@ -152,24 +284,29 @@ mod test {
 
         #[test]
         fn test_from_duration() {
-            let start = Utc::now();
+            let start = wt();
             let duration = Duration::hours(8);
             let range = TimeRange::from_duration(start, duration).unwrap();
             assert!(range.end() - range.start() == Duration::hours(8));
 
-            let start = Utc::now();
+            let start = wt();
             let duration = Duration::zero();
             assert!(
                 TimeRange::from_duration(start, duration).is_none(),
                 "it should fail if duration is zero"
             );
 
-            let start = Utc::now();
+            let start = wt();
             let duration = Duration::minutes(-30);
             assert!(
                 TimeRange::from_duration(start, duration).is_none(),
                 "it should fail if duration is negative"
             );
+        }
+
+        #[test]
+        fn test_intersects() {
+            let start = wt();
         }
     }
 }
