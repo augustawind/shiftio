@@ -9,8 +9,9 @@ pub mod timetable;
 
 pub use chrono::Weekday;
 use indexmap::IndexMap;
+pub use time::Duration;
 
-use crate::timetable::{TimeRange, Timetable, WeekTime};
+pub use crate::timetable::{TimeRange, Timetable, WeekTime};
 
 /// Manages a Schedule and a Roster of Agents that can fulfill it.
 pub struct Coordinator {
@@ -44,7 +45,7 @@ impl Schedule {
         self.blocks
             .values()
             .filter_map(|block| {
-                if time_block.range.intersects(&block.range) {
+                if time_block.intersects(block) {
                     Some(block.clone())
                 } else {
                     None
@@ -69,7 +70,7 @@ impl Timetable<TimeBlock> for Schedule {
             return Err(overlapping);
         }
 
-        self.blocks.insert(block.range().start(), block);
+        self.blocks.insert(block.start(), block);
         self.blocks.sort_keys();
 
         Ok(())
@@ -95,7 +96,7 @@ impl Timetable<TimeBlock> for Schedule {
             if !overlapping.is_empty() {
                 return Err((i, block, overlapping));
             }
-            blocks.push((block.range().start(), block));
+            blocks.push((block.start(), block));
         }
 
         self.blocks.extend(blocks);
@@ -106,35 +107,56 @@ impl Timetable<TimeBlock> for Schedule {
     /// Remove a time block from the Schedule.
     ///
     /// Returns the [`TimeBlock`], or [`None`] if no block exists with the given `start_time`.
-    fn rm_time(&mut self, start_time: &WeekTime) -> Option<TimeBlock> {
-        self.blocks.shift_remove(start_time)
+    fn rm_time(&mut self, start_time: WeekTime) -> Option<TimeBlock> {
+        self.blocks.shift_remove(&start_time)
     }
 }
 
 /// Represents a block of time and its requirements in a Schedule.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimeBlock {
-    // The time range covered by this block.
-    range: TimeRange,
+    start: WeekTime,
+    end: WeekTime,
+
     // Minimum number of agents needed during this block.
     min_agents: u32,
 }
 
 impl TimeBlock {
-    /// Return a new TimeBlock.
+    /// Return a new TimeBlock with the given `start` and `end`.
     ///
-    /// Returns [`None`] if `min_agents` is < 1.
-    pub fn new(range: TimeRange, min_agents: u32) -> Option<Self> {
+    /// Returns [`None`] if `min_agents` is < 1, or if `end` is not after `start`.
+    pub fn new(start: WeekTime, end: WeekTime, min_agents: u32) -> Option<Self> {
+        let (start, end) = Self::init_pair(start, end)?;
+        Self::_new(start, end, min_agents)
+    }
+
+    /// Return a new TimeBlock with the given `start`, where `end` is determined by `duration`.
+    ///
+    /// Returns [`None`] if `min_agents` is < 1, or if the the calculated end time is invalid.
+    pub fn from_duration(start: WeekTime, duration: Duration, min_agents: u32) -> Option<Self> {
+        let (start, end) = Self::init_duration(start, duration)?;
+        Self::_new(start, end, min_agents)
+    }
+
+    fn _new(start: WeekTime, end: WeekTime, min_agents: u32) -> Option<Self> {
         if min_agents < 1 {
             return None;
         }
-        Some(TimeBlock { range, min_agents })
+        Some(TimeBlock {
+            start,
+            end,
+            min_agents,
+        })
     }
 }
 
-impl TimeSpan for TimeBlock {
-    fn range(&self) -> &TimeRange {
-        &self.range
+impl TimeRange for TimeBlock {
+    fn start(&self) -> WeekTime {
+        self.start
+    }
+    fn end(&self) -> WeekTime {
+        self.end
     }
 }
 
@@ -149,9 +171,46 @@ pub struct Agent {
     // A unique identifier for this Agent.
     name: String,
     // Time ranges this Agent is available.
-    availability: Vec<TimeRange>,
+    availability: IndexMap<WeekTime, Availability>,
     // Time needed by this Agent, in minutes.
     time_needed: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Availability {
+    start: WeekTime,
+    end: WeekTime,
+}
+
+impl Availability {
+    /// Return a new Availability with the given `start` and `end`.
+    ///
+    /// Returns [`None`] if `end` is not after `start`.
+    pub fn new(start: WeekTime, end: WeekTime) -> Option<Self> {
+        let (start, end) = Self::init_pair(start, end)?;
+        Self::_new(start, end)
+    }
+
+    /// Return a new Availability with the given `start`, where `end` is determined by `duration`.
+    ///
+    /// Returns [`None`] if the the calculated end time is invalid.
+    pub fn from_duration(start: WeekTime, duration: Duration) -> Option<Self> {
+        let (start, end) = Self::init_duration(start, duration)?;
+        Self::_new(start, end)
+    }
+
+    fn _new(start: WeekTime, end: WeekTime) -> Option<Self> {
+        Some(Availability { start, end })
+    }
+}
+
+impl TimeRange for Availability {
+    fn start(&self) -> WeekTime {
+        self.start
+    }
+    fn end(&self) -> WeekTime {
+        self.end
+    }
 }
 
 #[cfg(test)]
@@ -160,16 +219,13 @@ mod test {
 
     use chrono::Weekday;
 
-    fn trange(day0: Weekday, hour0: u32, day1: Weekday, hour1: u32) -> TimeRange {
-        TimeRange::new(
+    fn tblock(day0: Weekday, hour0: u32, day1: Weekday, hour1: u32) -> TimeBlock {
+        TimeBlock::new(
             WeekTime::new(day0, hour0, 0).unwrap(),
             WeekTime::new(day1, hour1, 0).unwrap(),
+            1,
         )
         .unwrap()
-    }
-
-    fn tblock(range: TimeRange) -> TimeBlock {
-        TimeBlock::new(range, 1).unwrap()
     }
 
     mod test_schedule {
@@ -179,11 +235,11 @@ mod test {
 
         fn def_blocks() -> (TimeBlock, TimeBlock, TimeBlock, TimeBlock, TimeBlock) {
             (
-                tblock(trange(Mon, 10, Tue, 2)),
-                tblock(trange(Tue, 2, Tue, 12)),
-                tblock(trange(Wed, 0, Wed, 8)),
-                tblock(trange(Wed, 14, Fri, 22)),
-                tblock(trange(Sun, 0, Sun, 12)),
+                tblock(Mon, 10, Tue, 2),
+                tblock(Tue, 2, Tue, 12),
+                tblock(Wed, 0, Wed, 8),
+                tblock(Wed, 14, Fri, 22),
+                tblock(Sun, 0, Sun, 12),
             )
         }
 
@@ -196,13 +252,13 @@ mod test {
             assert!(schedule.add_time(block4).is_ok());
             assert_eq!(
                 schedule.times().keys().collect::<Vec<&WeekTime>>(),
-                vec![&b4.range().start()],
+                vec![&b4.start()],
             );
 
             assert!(schedule.add_time(block1).is_ok());
             assert_eq!(
                 schedule.times().keys().collect::<Vec<&WeekTime>>(),
-                vec![&b1.range().start(), &b4.range().start()],
+                vec![&b1.start(), &b4.start()],
             );
 
             assert!(schedule.add_time(block2).is_ok());
@@ -213,13 +269,13 @@ mod test {
                 vec![&b1, &b2, &b3, &b4, &b5],
             );
 
-            let overlap_b1_b2 = tblock(trange(Mon, 20, Tue, 3));
+            let overlap_b1_b2 = tblock(Mon, 20, Tue, 3);
             assert_eq!(
                 schedule.add_time(overlap_b1_b2),
                 Err(vec![b1, b2]),
                 "if the block overlaps, an error with overlapping blocks should be returned",
             );
-            let overlap_b3 = tblock(trange(Wed, 0, Wed, 1));
+            let overlap_b3 = tblock(Wed, 0, Wed, 1);
             assert_eq!(schedule.add_time(overlap_b3), Err(vec![b3]));
         }
 
@@ -237,10 +293,10 @@ mod test {
                 vec![&b1, &b2, &b3, &b4, &b5],
             );
 
-            let b0 = tblock(trange(Mon, 0, Mon, 4));
-            let b6 = tblock(trange(Sun, 12, Sun, 18));
-            let overlap_b2_b3 = tblock(trange(Tue, 3, Wed, 1));
-            let overlap_b3_b4 = tblock(trange(Wed, 2, Thu, 9));
+            let b0 = tblock(Mon, 0, Mon, 4);
+            let b6 = tblock(Sun, 12, Sun, 18);
+            let overlap_b2_b3 = tblock(Tue, 3, Wed, 1);
+            let overlap_b3_b4 = tblock(Wed, 2, Thu, 9);
             assert_eq!(
                 schedule.add_times(vec![b0, overlap_b3_b4.clone(), overlap_b2_b3, b6]),
                 Err((1, overlap_b3_b4, vec![b3.clone(), b4.clone()])),
@@ -261,13 +317,13 @@ mod test {
 
             schedule.add_time(block2).unwrap();
             schedule.add_time(block4).unwrap();
-            assert_eq!(schedule.rm_time(&b2.range().start()), Some(b2.clone()));
+            assert_eq!(schedule.rm_time(b2.start()), Some(b2.clone()));
             assert_eq!(
                 schedule.times().values().collect::<Vec<&TimeBlock>>(),
                 vec![&b4],
             );
 
-            assert_eq!(schedule.rm_time(&block5.range().start()), None);
+            assert_eq!(schedule.rm_time(block5.start()), None);
             assert_eq!(
                 schedule.times().values().collect::<Vec<&TimeBlock>>(),
                 vec![&b4],

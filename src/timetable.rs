@@ -33,7 +33,7 @@ impl WeekTime {
     /// Create a new `WeekTime` from a weekday, an hour, and a minute.
     pub fn new(weekday: Weekday, hour: u32, min: u32) -> Option<Self> {
         let time = NaiveTime::from_hms_opt(hour, min, 0)?;
-        let datetime = Self::dt_from_weekday_and_time(weekday, time).unwrap();
+        let datetime = Self::dt_from_weekday_and_time(weekday, time);
         Some(WeekTime {
             weekday,
             time,
@@ -42,17 +42,19 @@ impl WeekTime {
     }
 
     /// Create a new `WeekTime` from a weekday and a naive time.
-    pub fn from_time(weekday: Weekday, time: NaiveTime) -> Option<Self> {
-        let datetime = Self::dt_from_weekday_and_time(weekday, time)?;
-        Some(WeekTime {
+    pub fn from_time(weekday: Weekday, time: NaiveTime) -> Self {
+        let datetime = Self::dt_from_weekday_and_time(weekday, time);
+        WeekTime {
             weekday,
             time,
             datetime,
-        })
+        }
     }
 
-    fn dt_from_weekday_and_time(weekday: Weekday, time: NaiveTime) -> Option<DateTime<Utc>> {
-        Utc.isoywd(DUMMY_YEAR, DUMMY_WEEK, weekday).and_time(time)
+    fn dt_from_weekday_and_time(weekday: Weekday, time: NaiveTime) -> DateTime<Utc> {
+        // WARNING: using `unwrap()` here because it doesn't look like it's possible for this
+        // to fail when using the `Utc` timezone. Handle this properly if you ever change the TZ.
+        Utc.isoywd(DUMMY_YEAR, DUMMY_WEEK, weekday).and_time(time).unwrap()
     }
 
     pub fn dt(&self) -> DateTime<Utc> {
@@ -127,7 +129,7 @@ impl Sub<WeekTime> for WeekTime {
 /// # Example
 ///
 /// ```rust
-/// use scheduler::Weekday::*;
+/// use scheduler::{Duration, TimeRange, Weekday::*, WeekTime};
 ///
 /// #[derive(Debug, Clone, PartialEq, Eq)]
 /// struct MyTimeRange {
@@ -149,7 +151,7 @@ impl Sub<WeekTime> for WeekTime {
 ///     // validates them using `TimeRange::init_pair`.
 ///     fn new(start: WeekTime, end: WeekTime) -> Option<Self> {
 ///         let (start, end) = Self::init_pair(start, end)?;
-///         MyTimeRange { start, end }
+///         Some(MyTimeRange { start, end })
 ///     }
 ///
 ///     // A constructor function that takes a start time and a duration, and
@@ -157,16 +159,22 @@ impl Sub<WeekTime> for WeekTime {
 ///     // the end time.
 ///     fn from_duration(start: WeekTime, duration: Duration) -> Option<Self> {
 ///         let (start, end) = Self::init_duration(start, duration)?;
-///         MyTimeRange { start, end }
+///         Some(MyTimeRange { start, end })
 ///     }
 /// }
 ///
 /// // Validation fails: end < start.
-/// let result = MyTimeRange::new(WeekTime::new(Wed, 0, 0), WeekTime::new(Tue, 0, 0));
+/// let result = MyTimeRange::new(
+///     WeekTime::new(Wed, 0, 0).unwrap(),
+///     WeekTime::new(Tue, 0, 0).unwrap(),
+/// );
 /// assert!(result.is_none());
 ///
 /// // Validation fails: end time (start + duration) would be in following week.
-/// let result = MyTimeRange::from_duration(WeekTime::new(Sun, 20, 0), Duration::hours(8));
+/// let result = MyTimeRange::from_duration(
+///     WeekTime::new(Sun, 20, 0).unwrap(),
+///     Duration::hours(8),
+/// );
 /// assert!(result.is_none());
 /// ```
 ///
@@ -234,7 +242,7 @@ pub trait TimeRange: Debug + Clone + PartialEq + Eq {
         };
 
         let end = start + duration;
-        Some(Self::new_unchecked(start, end))
+        Some((start, end))
     }
 
     /// Returns `true` if this `TimeRange` and the given `range` overlap.
@@ -278,31 +286,32 @@ mod tests {
                 self.1
             }
         }
+        impl TimeSpan {
+            fn from_duration(start: WeekTime, duration: Duration) -> Option<Self> {
+                let (start, end) = Self::init_duration(start, duration)?;
+                Some(Self(start, end))
+            }
+        }
 
         #[test]
-        fn test_new() {
-            let start = wt();
-            let end = wt() + Duration::hours(8);
-            let range = TimeSpan::new(start, end).unwrap();
-            assert!(range.end() - range.start() == Duration::hours(8));
-
+        fn test_init_pair() {
             let start = wt();
             let end = start;
             assert!(
-                TimeSpan::new(start, end).is_none(),
+                TimeSpan::init_pair(start, end).is_none(),
                 "it should fail if start == end"
             );
 
             let start = wt();
             let end = start - Duration::hours(1);
             assert!(
-                TimeSpan::new(start, end).is_none(),
+                TimeSpan::init_pair(start, end).is_none(),
                 "it should fail if start > end"
             );
         }
 
         #[test]
-        fn test_from_duration() {
+        fn test_init_duration() {
             // happy path
             let start = wt();
             let duration = Duration::hours(8);
@@ -313,9 +322,9 @@ mod tests {
             let start = wt_with(Weekday::Sun, 20);
             let duration = Duration::hours(4);
             let range = TimeSpan::from_duration(start, duration).unwrap();
-            assert_eq!(range.end.weekday, Weekday::Mon);
-            assert_eq!(range.end.time.num_seconds_from_midnight(), 0);
-            assert_eq!(range.end - range.start, Duration::hours(4));
+            assert_eq!(range.end().weekday, Weekday::Mon);
+            assert_eq!(range.end().time.num_seconds_from_midnight(), 0);
+            assert_eq!(range.end() - range.start(), Duration::hours(4));
 
             let start = wt();
             let duration = Duration::zero();
@@ -350,33 +359,33 @@ mod tests {
         fn test_intersects() {
             let start = WeekTime::new(Weekday::Tue, 12, 0).unwrap();
             let end = WeekTime::new(Weekday::Thu, 12, 0).unwrap();
-            let range = TimeSpan::new(start, end).unwrap();
+            let range = TimeSpan(start, end);
 
             // f:  [-----]  (-----)
             let start = WeekTime::new(Weekday::Mon, 0, 0).unwrap();
             let end = WeekTime::new(Weekday::Tue, 10, 30).unwrap();
-            let r = TimeSpan::new(start, end).unwrap();
+            let r = TimeSpan(start, end);
             assert!(!range.intersects(&r));
             assert!(!r.intersects(&range));
 
             // f:  [-----](-----)
             let start = WeekTime::new(Weekday::Mon, 0, 0).unwrap();
             let end = WeekTime::new(Weekday::Tue, 12, 0).unwrap();
-            let r = TimeSpan::new(start, end).unwrap();
+            let r = TimeSpan(start, end);
             assert!(!range.intersects(&r));
             assert!(!r.intersects(&range));
 
             // t:  [---(-]---)
             let start = WeekTime::new(Weekday::Mon, 0, 0).unwrap();
             let end = WeekTime::new(Weekday::Tue, 13, 0).unwrap();
-            let r = TimeSpan::new(start, end).unwrap();
+            let r = TimeSpan(start, end);
             assert!(range.intersects(&r));
             assert!(r.intersects(&range));
 
             // t: [--(-----)-]
             let start = WeekTime::new(Weekday::Mon, 0, 0).unwrap();
             let end = WeekTime::new(Weekday::Thu, 14, 0).unwrap();
-            let r = TimeSpan::new(start, end).unwrap();
+            let r = TimeSpan(start, end);
             assert!(range.intersects(&r));
             assert!(r.intersects(&range));
         }
