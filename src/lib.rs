@@ -7,6 +7,8 @@
 //! represented by variants of the [`chrono::Weekday`] enum.
 pub mod timetable;
 
+use std::collections::HashMap;
+
 pub use chrono::Weekday;
 use indexmap::IndexMap;
 pub use time::Duration;
@@ -21,7 +23,7 @@ pub struct Project {
 
 impl Project {
     pub fn new(agenda: Agenda, roster: Roster) -> Self {
-        Self { agenda, roster }
+        Project { agenda, roster }
     }
 }
 
@@ -31,14 +33,6 @@ pub struct Agenda {
     // A mapping of start times to `TimeBlock` objects.
     // The key for each `TimeBlock` is its start time.
     blocks: IndexMap<WeekTime, TimeBlock>,
-}
-
-impl Agenda {
-    /// Return a new, empty Agenda.
-    pub fn new() -> Self {
-        let blocks = IndexMap::new();
-        Agenda { blocks }
-    }
 }
 
 impl Timetable<TimeBlock> for Agenda {
@@ -51,6 +45,14 @@ impl Timetable<TimeBlock> for Agenda {
     }
 }
 
+impl Agenda {
+    /// Return a new, empty Agenda.
+    pub fn new() -> Self {
+        let blocks = IndexMap::new();
+        Agenda { blocks }
+    }
+}
+
 /// Represents a block of time and its requirements in an Agenda.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimeBlock {
@@ -59,6 +61,15 @@ pub struct TimeBlock {
 
     // Minimum number of workers needed during this block.
     min_workers: u32,
+}
+
+impl TimeRange for TimeBlock {
+    fn start(&self) -> WeekTime {
+        self.start
+    }
+    fn end(&self) -> WeekTime {
+        self.end
+    }
 }
 
 impl TimeBlock {
@@ -90,29 +101,36 @@ impl TimeBlock {
     }
 }
 
-impl TimeRange for TimeBlock {
-    fn start(&self) -> WeekTime {
-        self.start
-    }
-    fn end(&self) -> WeekTime {
-        self.end
-    }
-}
-
 /// A collection of Workers.
 pub struct Roster {
     // A mapping of Workers by their names.
-    workers: IndexMap<String, Worker>,
+    workers: HashMap<String, Worker>,
+}
+
+impl Roster {
+    pub fn new() -> Self {
+        let workers = HashMap::new();
+        Roster { workers }
+    }
+
+    pub fn add_worker(&mut self, worker: Worker) -> Result<(), Worker> {
+        if let Some(other) = self.workers.get(&worker.name).cloned() {
+            return Err(other);
+        }
+        self.workers.insert(worker.name.clone(), worker);
+        Ok(())
+    }
 }
 
 /// Represents the availability and needs of a worker in the system.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Worker {
     // A unique identifier for this Worker.
     name: String,
+    // Time needed by this Worker, in minutes.
+    hours_needed: Duration,
     // Time ranges this Worker is available.
     availability: IndexMap<WeekTime, Availability>,
-    // Time needed by this Worker, in minutes.
-    time_needed: u32,
 }
 
 impl Timetable<Availability> for Worker {
@@ -125,10 +143,37 @@ impl Timetable<Availability> for Worker {
     }
 }
 
+impl Worker {
+    pub fn new<T: ToString>(name: T, hours_needed: Duration) -> Option<Self> {
+        // TODO: proper errors
+        if hours_needed <= Duration::zero() {
+            return None;
+        }
+        if hours_needed > Duration::weeks(1) {
+            return None;
+        }
+
+        Some(Worker {
+            name: name.to_string(),
+            hours_needed: hours_needed,
+            availability: IndexMap::new(),
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Availability {
     start: WeekTime,
     end: WeekTime,
+}
+
+impl TimeRange for Availability {
+    fn start(&self) -> WeekTime {
+        self.start
+    }
+    fn end(&self) -> WeekTime {
+        self.end
+    }
 }
 
 impl Availability {
@@ -150,15 +195,6 @@ impl Availability {
 
     fn _new(start: WeekTime, end: WeekTime) -> Option<Self> {
         Some(Availability { start, end })
-    }
-}
-
-impl TimeRange for Availability {
-    fn start(&self) -> WeekTime {
-        self.start
-    }
-    fn end(&self) -> WeekTime {
-        self.end
     }
 }
 
