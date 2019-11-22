@@ -1,14 +1,16 @@
 //! Utilities for creating optimal work schedules.
 //!
+//! # Weeks
+//!
 //! This library relies heavily on the concept of a _week_ as a unit of time. A _week_ is defined
 //! as a series of 7 _weekdays_ beginning with Monday and ending with Sunday. Weekdays are
 //! represented by variants of the [`chrono::Weekday`] enum.
 pub mod timetable;
 
-use chrono::Timelike;
+pub use chrono::Weekday;
 use indexmap::IndexMap;
 
-use crate::timetable::{TimeRange, TimeSpan, Timetable, WeekTime};
+use crate::timetable::{TimeRange, Timetable, WeekTime};
 
 /// Manages a Schedule and a Roster of Agents that can fulfill it.
 pub struct Coordinator {
