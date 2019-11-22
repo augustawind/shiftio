@@ -29,9 +29,10 @@ impl Ord for WeekTime {
 }
 
 impl WeekTime {
-    /// Create a new `WeekTime` from a weekday and a naive time.
-    pub fn new(weekday: Weekday, time: NaiveTime) -> Option<Self> {
-        let datetime = Self::dt_from_weekday_and_time(weekday, time)?;
+    /// Create a new `WeekTime` from a weekday, an hour, and a minute.
+    pub fn new(weekday: Weekday, hour: u32, min: u32) -> Option<Self> {
+        let time = NaiveTime::from_hms_opt(hour, min, 0)?;
+        let datetime = Self::dt_from_weekday_and_time(weekday, time).unwrap();
         Some(WeekTime {
             weekday,
             time,
@@ -39,9 +40,9 @@ impl WeekTime {
         })
     }
 
-    pub fn from_hms(weekday: Weekday, hour: u32, min: u32, sec: u32) -> Option<Self> {
-        let time = NaiveTime::from_hms_opt(hour, min, sec)?;
-        let datetime = Self::dt_from_weekday_and_time(weekday, time).unwrap();
+    /// Create a new `WeekTime` from a weekday and a naive time.
+    pub fn from_time(weekday: Weekday, time: NaiveTime) -> Option<Self> {
+        let datetime = Self::dt_from_weekday_and_time(weekday, time)?;
         Some(WeekTime {
             weekday,
             time,
@@ -122,7 +123,7 @@ impl TimeRange {
         }
 
         // Assert duration is not longer than remaining time in week.
-        let days_left = 6 - start.weekday.num_days_from_sunday() as i64;
+        let days_left = 6 - start.weekday.num_days_from_monday() as i64;
         match duration.num_days().cmp(&days_left) {
             Ordering::Greater => {
                 eprintln!(
@@ -249,12 +250,12 @@ pub struct Agent {
 mod test {
     use super::*;
 
-    fn dt() -> DateTime<Utc> {
-        Utc.ymd(1991, 11, 14).and_hms(16, 34, 0)
-    }
+    // fn dt() -> DateTime<Utc> {
+    //     Utc.ymd(1991, 11, 14).and_hms(16, 34, 0)
+    // }
 
     fn wt() -> WeekTime {
-        WeekTime::new(Weekday::Thu, NaiveTime::from_hms(11, 22, 33)).unwrap()
+        WeekTime::from_time(Weekday::Thu, NaiveTime::from_hms(11, 22, 33)).unwrap()
     }
 
     mod test_time_range {
