@@ -249,15 +249,18 @@ impl Timetable {
     pub fn add_blocks<T: IntoIterator<Item = TimeBlock>>(
         &mut self,
         iter: T,
-    ) -> Result<(), (usize, Timeblock, Vec<Timeblock>)> {
+    ) -> Result<(), (usize, TimeBlock, Vec<TimeBlock>)> {
+        let mut blocks = Vec::new();
+
         for (i, block) in iter.into_iter().enumerate() {
             let overlapping = self.find_overlapping(&block);
             if !overlapping.is_empty() {
                 return Err((i, block, overlapping));
             }
-            self.blocks.insert(block.range.start, block);
+            blocks.push((block.range.start, block));
         }
 
+        self.blocks.extend(blocks);
         self.blocks.sort_keys();
         Ok(())
     }
@@ -279,11 +282,23 @@ impl Timetable {
 
 /// Represents a block of time and its requirements in a Timetable.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Timeblock {
+pub struct TimeBlock {
     // The time range covered by this block.
-    pub range: TimeRange,
+    range: TimeRange,
     // Minimum number of agents needed during this block.
-    pub min_agents: u32,
+    min_agents: u32,
+}
+
+impl TimeBlock {
+    /// Return a new TimeBlock.
+    ///
+    /// Returns [`None`] if `min_agents` is < 1.
+    pub fn new(range: TimeRange, min_agents: u32) -> Option<Self> {
+        if min_agents < 1 {
+            return None;
+        }
+        Some(TimeBlock { range, min_agents })
+    }
 }
 
 /// A collection of Agents.
@@ -306,16 +321,29 @@ pub struct Agent {
 mod test {
     use super::*;
 
-    fn wt() -> WeekTime {
-        wt_with(Weekday::Thu, 11)
-    }
+    mod utils {
+        use crate::{TimeBlock, TimeRange, WeekTime, Weekday};
 
-    fn wt_with(weekday: Weekday, hour: u32) -> WeekTime {
-        WeekTime::new(weekday, hour, 0).unwrap()
+        pub fn wt() -> WeekTime {
+            wt_with(Weekday::Thu, 11)
+        }
+
+        pub fn wt_with(weekday: Weekday, hour: u32) -> WeekTime {
+            WeekTime::new(weekday, hour, 0).unwrap()
+        }
+
+        pub fn trange(day0: Weekday, hour0: u32, day1: Weekday, hour1: u32) -> TimeRange {
+            TimeRange::new(wt_with(day0, hour0), wt_with(day1, hour1)).unwrap()
+        }
+
+        pub fn tblock(range: TimeRange) -> TimeBlock {
+            TimeBlock::new(range, 1).unwrap()
+        }
     }
 
     mod test_time_range {
         use super::*;
+        use utils::*;
 
         #[test]
         fn test_new() {
@@ -417,6 +445,89 @@ mod test {
             let r = TimeRange::new(start, end).unwrap();
             assert!(range.intersects(&r));
             assert!(r.intersects(&range));
+        }
+    }
+
+    mod test_timetable {
+        use super::*;
+        use utils::*;
+
+        use Weekday::*;
+
+        fn def_blocks() -> (TimeBlock, TimeBlock, TimeBlock, TimeBlock, TimeBlock) {
+            (
+                tblock(trange(Mon, 10, Tue, 2)),
+                tblock(trange(Tue, 2, Tue, 12)),
+                tblock(trange(Wed, 0, Wed, 8)),
+                tblock(trange(Wed, 14, Fri, 22)),
+                tblock(trange(Sun, 0, Sun, 12)),
+            )
+        }
+
+        #[test]
+        fn test_add_block() {
+            let mut tt = Timetable::new();
+            let (block1, block2, block3, block4, block5) = def_blocks();
+            let (b1, b2, b3, b4, b5) = def_blocks();
+
+            assert!(tt.add_block(block4).is_ok());
+            assert_eq!(
+                tt.blocks().keys().collect::<Vec<&WeekTime>>(),
+                vec![&b4.range.start],
+            );
+
+            assert!(tt.add_block(block1).is_ok());
+            assert_eq!(
+                tt.blocks().keys().collect::<Vec<&WeekTime>>(),
+                vec![&b1.range.start, &b4.range.start],
+            );
+
+            assert!(tt.add_block(block2).is_ok());
+            assert!(tt.add_block(block5).is_ok());
+            assert!(tt.add_block(block3).is_ok());
+            assert_eq!(
+                tt.blocks().values().collect::<Vec<&TimeBlock>>(),
+                vec![&b1, &b2, &b3, &b4, &b5],
+            );
+
+            let overlap_b1_b2 = tblock(trange(Mon, 20, Tue, 3));
+            assert_eq!(
+                tt.add_block(overlap_b1_b2),
+                Err(vec![b1, b2]),
+                "if the block overlaps, an error with overlapping blocks should be returned",
+            );
+            let overlap_b3 = tblock(trange(Wed, 0, Wed, 1));
+            assert_eq!(tt.add_block(overlap_b3), Err(vec![b3]));
+        }
+
+        #[test]
+        fn test_add_blocks() {
+            let mut tt = Timetable::new();
+            let (block1, block2, block3, block4, block5) = def_blocks();
+            let (b1, b2, b3, b4, b5) = def_blocks();
+
+            assert!(tt
+                .add_blocks(vec![block2, block1, block5, block3, block4])
+                .is_ok());
+            assert_eq!(
+                tt.blocks().values().collect::<Vec<&TimeBlock>>(),
+                vec![&b1, &b2, &b3, &b4, &b5],
+            );
+
+            let b0 = tblock(trange(Mon, 0, Mon, 4));
+            let b6 = tblock(trange(Sun, 12, Sun, 18));
+            let overlap_b2_b3 = tblock(trange(Tue, 3, Wed, 1));
+            let overlap_b3_b4 = tblock(trange(Wed, 2, Thu, 9));
+            assert_eq!(
+                tt.add_blocks(vec![b0, overlap_b3_b4.clone(), overlap_b2_b3, b6]),
+                Err((1, overlap_b3_b4, vec![b3.clone(), b4.clone()])),
+                "if block(s) are overlapping, an error with the first should be returned",
+            );
+            assert_eq!(
+                tt.blocks().values().collect::<Vec<&TimeBlock>>(),
+                vec![&b1, &b2, &b3, &b4, &b5],
+                "no blocks should be added if any were overlapping",
+            );
         }
     }
 }
