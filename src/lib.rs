@@ -134,8 +134,9 @@ impl TimeRange {
                 return None;
             }
             Ordering::Equal => {
-                let time_left = start.time - Duration::hours(24);
-                if duration.num_seconds() > time_left.num_seconds_from_midnight() as i64 {
+                let delta = start.time - NaiveTime::from_hms(0, 0, 0);
+                let time_left = Duration::hours(24) - delta;
+                if duration.num_seconds() > time_left.num_seconds() as i64 {
                     eprintln!(
                         "Duration is {} seconds ({} minutes) past the end of the week.",
                         duration.num_seconds(),
@@ -249,12 +250,12 @@ pub struct Agent {
 mod test {
     use super::*;
 
-    // fn dt() -> DateTime<Utc> {
-    //     Utc.ymd(1991, 11, 14).and_hms(16, 34, 0)
-    // }
-
     fn wt() -> WeekTime {
-        WeekTime::from_time(Weekday::Thu, NaiveTime::from_hms(11, 22, 33)).unwrap()
+        wt_with(Weekday::Thu, 11)
+    }
+
+    fn wt_with(weekday: Weekday, hour: u32) -> WeekTime {
+        WeekTime::new(weekday, hour, 0).unwrap()
     }
 
     mod test_time_range {
@@ -301,6 +302,20 @@ mod test {
             assert!(
                 TimeRange::from_duration(start, duration).is_none(),
                 "it should fail if duration is negative"
+            );
+
+            let start = wt_with(Weekday::Sat, 0);
+            let duration = Duration::days(2);
+            assert!(
+                TimeRange::from_duration(start, duration).is_none(),
+                "it should fail if duration is next week (days)"
+            );
+
+            let start = wt_with(Weekday::Sun, 20);
+            let duration = Duration::hours(5);
+            assert!(
+                TimeRange::from_duration(start, duration).is_none(),
+                "it should fail if duration is next week (time)"
             );
         }
 
