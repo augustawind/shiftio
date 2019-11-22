@@ -13,31 +13,31 @@ pub use time::Duration;
 
 pub use crate::timetable::{TimeRange, Timetable, WeekTime};
 
-/// Manages a Schedule and a Roster of Agents that can fulfill it.
-pub struct Coordinator {
-    timetable: Schedule,
+/// Manages a Agenda and a Roster of Agents that can fulfill it.
+pub struct Project {
+    agenda: Agenda,
     roster: Roster,
 }
 
-impl Coordinator {
-    pub fn new(timetable: Schedule, roster: Roster) -> Self {
-        Self { timetable, roster }
+impl Project {
+    pub fn new(agenda: Agenda, roster: Roster) -> Self {
+        Self { agenda, roster }
     }
 }
 
-/// Represents all the time ranges and requirements for a Coordinator.
+/// Represents all the time ranges and requirements for a Project.
 /// Time ranges must be non-overlapping - this is handled by the add methods.
-pub struct Schedule {
+pub struct Agenda {
     // A mapping of start times to `TimeBlock` objects.
     // The key for each `TimeBlock` is its start time.
     blocks: IndexMap<WeekTime, TimeBlock>,
 }
 
-impl Schedule {
-    /// Return a new, empty Schedule.
+impl Agenda {
+    /// Return a new, empty Agenda.
     pub fn new() -> Self {
         let blocks = IndexMap::new();
-        Self { blocks }
+        Agenda { blocks }
     }
 
     // Return a list of all time blocks in `self.blocks` that overlap with `time_block`.
@@ -55,16 +55,16 @@ impl Schedule {
     }
 }
 
-impl Timetable<TimeBlock> for Schedule {
-    fn times(&self) -> &IndexMap<WeekTime, TimeBlock> {
+impl Timetable<TimeBlock> for Agenda {
+    fn ranges(&self) -> &IndexMap<WeekTime, TimeBlock> {
         &self.blocks
     }
 
-    /// Add a [`TimeBlock`] to the Schedule.
+    /// Add a [`TimeBlock`] to the Agenda.
     ///
-    /// If the time block overlaps with any blocks in the Schedule, an Err is returned with a vector
+    /// If the time block overlaps with any blocks in the Agenda, an Err is returned with a vector
     /// of all the time blocks it overlapped in ascending order.
-    fn add_time(&mut self, block: TimeBlock) -> Result<(), Vec<TimeBlock>> {
+    fn add_range(&mut self, block: TimeBlock) -> Result<(), Vec<TimeBlock>> {
         let overlapping = self.find_overlapping(&block);
         if !overlapping.is_empty() {
             return Err(overlapping);
@@ -76,16 +76,16 @@ impl Timetable<TimeBlock> for Schedule {
         Ok(())
     }
 
-    /// Add multiple [`TimeBlock`]s to the Schedule.
+    /// Add multiple [`TimeBlock`]s to the Agenda.
     ///
-    /// If any time blocks in `iter` overlap with any blocks in the Schedule, an Err is returned
+    /// If any time blocks in `iter` overlap with any blocks in the Agenda, an Err is returned
     /// with a tuple of `(index, block, overlapping)`, where `block` is the first block in `iter`
     /// that overlapped, `index` is its index in `iter`, and `overlapping` is a vector of all
-    /// the blocks it overlapped in the Schedule in ascending order. Note that this includes
+    /// the blocks it overlapped in the Agenda in ascending order. Note that this includes
     /// duplicates as well.
     ///
-    /// This is more efficient than calling [`add_time`] individually for each time block.
-    fn add_times<T: IntoIterator<Item = TimeBlock>>(
+    /// This is more efficient than calling [`add_range`] individually for each time block.
+    fn add_ranges<T: IntoIterator<Item = TimeBlock>>(
         &mut self,
         iter: T,
     ) -> Result<(), (usize, TimeBlock, Vec<TimeBlock>)> {
@@ -104,15 +104,15 @@ impl Timetable<TimeBlock> for Schedule {
         Ok(())
     }
 
-    /// Remove a time block from the Schedule.
+    /// Remove a time block from the Agenda.
     ///
     /// Returns the [`TimeBlock`], or [`None`] if no block exists with the given `start_time`.
-    fn rm_time(&mut self, start_time: WeekTime) -> Option<TimeBlock> {
+    fn rm_range(&mut self, start_time: WeekTime) -> Option<TimeBlock> {
         self.blocks.shift_remove(&start_time)
     }
 }
 
-/// Represents a block of time and its requirements in a Schedule.
+/// Represents a block of time and its requirements in an Agenda.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimeBlock {
     start: WeekTime,
@@ -244,52 +244,52 @@ mod test {
         }
 
         #[test]
-        fn test_add_time() {
-            let mut schedule = Schedule::new();
+        fn test_add_range() {
+            let mut agenda = Agenda::new();
             let (block1, block2, block3, block4, block5) = def_blocks();
             let (b1, b2, b3, b4, b5) = def_blocks();
 
-            assert!(schedule.add_time(block4).is_ok());
+            assert!(agenda.add_range(block4).is_ok());
             assert_eq!(
-                schedule.times().keys().collect::<Vec<&WeekTime>>(),
+                agenda.ranges().keys().collect::<Vec<&WeekTime>>(),
                 vec![&b4.start()],
             );
 
-            assert!(schedule.add_time(block1).is_ok());
+            assert!(agenda.add_range(block1).is_ok());
             assert_eq!(
-                schedule.times().keys().collect::<Vec<&WeekTime>>(),
+                agenda.ranges().keys().collect::<Vec<&WeekTime>>(),
                 vec![&b1.start(), &b4.start()],
             );
 
-            assert!(schedule.add_time(block2).is_ok());
-            assert!(schedule.add_time(block5).is_ok());
-            assert!(schedule.add_time(block3).is_ok());
+            assert!(agenda.add_range(block2).is_ok());
+            assert!(agenda.add_range(block5).is_ok());
+            assert!(agenda.add_range(block3).is_ok());
             assert_eq!(
-                schedule.times().values().collect::<Vec<&TimeBlock>>(),
+                agenda.ranges().values().collect::<Vec<&TimeBlock>>(),
                 vec![&b1, &b2, &b3, &b4, &b5],
             );
 
             let overlap_b1_b2 = tblock(Mon, 20, Tue, 3);
             assert_eq!(
-                schedule.add_time(overlap_b1_b2),
+                agenda.add_range(overlap_b1_b2),
                 Err(vec![b1, b2]),
                 "if the block overlaps, an error with overlapping blocks should be returned",
             );
             let overlap_b3 = tblock(Wed, 0, Wed, 1);
-            assert_eq!(schedule.add_time(overlap_b3), Err(vec![b3]));
+            assert_eq!(agenda.add_range(overlap_b3), Err(vec![b3]));
         }
 
         #[test]
-        fn test_add_times() {
-            let mut schedule = Schedule::new();
+        fn test_add_ranges() {
+            let mut agenda = Agenda::new();
             let (block1, block2, block3, block4, block5) = def_blocks();
             let (b1, b2, b3, b4, b5) = def_blocks();
 
-            assert!(schedule
-                .add_times(vec![block2, block1, block5, block3, block4])
+            assert!(agenda
+                .add_ranges(vec![block2, block1, block5, block3, block4])
                 .is_ok());
             assert_eq!(
-                schedule.times().values().collect::<Vec<&TimeBlock>>(),
+                agenda.ranges().values().collect::<Vec<&TimeBlock>>(),
                 vec![&b1, &b2, &b3, &b4, &b5],
             );
 
@@ -298,36 +298,36 @@ mod test {
             let overlap_b2_b3 = tblock(Tue, 3, Wed, 1);
             let overlap_b3_b4 = tblock(Wed, 2, Thu, 9);
             assert_eq!(
-                schedule.add_times(vec![b0, overlap_b3_b4.clone(), overlap_b2_b3, b6]),
+                agenda.add_ranges(vec![b0, overlap_b3_b4.clone(), overlap_b2_b3, b6]),
                 Err((1, overlap_b3_b4, vec![b3.clone(), b4.clone()])),
                 "if block(s) are overlapping, an error with the first should be returned",
             );
             assert_eq!(
-                schedule.times().values().collect::<Vec<&TimeBlock>>(),
+                agenda.ranges().values().collect::<Vec<&TimeBlock>>(),
                 vec![&b1, &b2, &b3, &b4, &b5],
                 "no blocks should be added if any were overlapping",
             );
         }
 
         #[test]
-        fn test_rm_time() {
-            let mut schedule = Schedule::new();
+        fn test_rm_range() {
+            let mut agenda = Agenda::new();
             let (_, block2, _, block4, block5) = def_blocks();
             let (_, b2, _, b4, _) = def_blocks();
 
-            schedule.add_time(block2).unwrap();
-            schedule.add_time(block4).unwrap();
-            assert_eq!(schedule.rm_time(b2.start()), Some(b2.clone()));
+            agenda.add_range(block2).unwrap();
+            agenda.add_range(block4).unwrap();
+            assert_eq!(agenda.rm_range(b2.start()), Some(b2.clone()));
             assert_eq!(
-                schedule.times().values().collect::<Vec<&TimeBlock>>(),
+                agenda.ranges().values().collect::<Vec<&TimeBlock>>(),
                 vec![&b4],
             );
 
-            assert_eq!(schedule.rm_time(block5.start()), None);
+            assert_eq!(agenda.rm_range(block5.start()), None);
             assert_eq!(
-                schedule.times().values().collect::<Vec<&TimeBlock>>(),
+                agenda.ranges().values().collect::<Vec<&TimeBlock>>(),
                 vec![&b4],
-                "if rm_time() doesn't find anything, nothing should be changed",
+                "if rm_range() doesn't find anything, nothing should be changed",
             );
         }
     }

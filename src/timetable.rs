@@ -54,7 +54,9 @@ impl WeekTime {
     fn dt_from_weekday_and_time(weekday: Weekday, time: NaiveTime) -> DateTime<Utc> {
         // WARNING: using `unwrap()` here because it doesn't look like it's possible for this
         // to fail when using the `Utc` timezone. Handle this properly if you ever change the TZ.
-        Utc.isoywd(DUMMY_YEAR, DUMMY_WEEK, weekday).and_time(time).unwrap()
+        Utc.isoywd(DUMMY_YEAR, DUMMY_WEEK, weekday)
+            .and_time(time)
+            .unwrap()
     }
 
     pub fn dt(&self) -> DateTime<Utc> {
@@ -252,10 +254,23 @@ pub trait TimeRange: Debug + Clone + PartialEq + Eq {
 }
 
 pub trait Timetable<T: TimeRange> {
-    fn times(&self) -> &IndexMap<WeekTime, T>;
-    fn add_time(&mut self, time: T) -> Result<(), Vec<T>>;
-    fn add_times<I: IntoIterator<Item = T>>(&mut self, iter: I) -> Result<(), (usize, T, Vec<T>)>;
-    fn rm_time(&mut self, start: WeekTime) -> Option<T>;
+    fn ranges(&self) -> &IndexMap<WeekTime, T>;
+    fn add_range(&mut self, range: T) -> Result<(), Vec<T>>;
+    fn add_ranges<I: IntoIterator<Item = T>>(&mut self, iter: I) -> Result<(), (usize, T, Vec<T>)>;
+    fn rm_range(&mut self, start: WeekTime) -> Option<T>;
+
+    fn find_overlapping(&self, time_range: &T) -> Vec<T> {
+        self.ranges()
+            .values()
+            .filter_map(|range| {
+                if time_range.intersects(range) {
+                    Some(range.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
