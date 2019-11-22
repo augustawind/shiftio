@@ -13,7 +13,7 @@ pub use time::Duration;
 
 pub use crate::timetable::{TimeRange, Timetable, WeekTime};
 
-/// Manages a Agenda and a Roster of Agents that can fulfill it.
+/// Manages a Agenda and a Roster of Workers that can fulfill it.
 pub struct Project {
     agenda: Agenda,
     roster: Roster,
@@ -57,35 +57,35 @@ pub struct TimeBlock {
     start: WeekTime,
     end: WeekTime,
 
-    // Minimum number of agents needed during this block.
-    min_agents: u32,
+    // Minimum number of workers needed during this block.
+    min_workers: u32,
 }
 
 impl TimeBlock {
     /// Return a new TimeBlock with the given `start` and `end`.
     ///
-    /// Returns [`None`] if `min_agents` is < 1, or if `end` is not after `start`.
-    pub fn new(start: WeekTime, end: WeekTime, min_agents: u32) -> Option<Self> {
+    /// Returns [`None`] if `min_workers` is < 1, or if `end` is not after `start`.
+    pub fn new(start: WeekTime, end: WeekTime, min_workers: u32) -> Option<Self> {
         let (start, end) = Self::init_pair(start, end)?;
-        Self::_new(start, end, min_agents)
+        Self::_new(start, end, min_workers)
     }
 
     /// Return a new TimeBlock with the given `start`, where `end` is determined by `duration`.
     ///
-    /// Returns [`None`] if `min_agents` is < 1, or if the the calculated end time is invalid.
-    pub fn from_duration(start: WeekTime, duration: Duration, min_agents: u32) -> Option<Self> {
+    /// Returns [`None`] if `min_workers` is < 1, or if the the calculated end time is invalid.
+    pub fn from_duration(start: WeekTime, duration: Duration, min_workers: u32) -> Option<Self> {
         let (start, end) = Self::init_duration(start, duration)?;
-        Self::_new(start, end, min_agents)
+        Self::_new(start, end, min_workers)
     }
 
-    fn _new(start: WeekTime, end: WeekTime, min_agents: u32) -> Option<Self> {
-        if min_agents < 1 {
+    fn _new(start: WeekTime, end: WeekTime, min_workers: u32) -> Option<Self> {
+        if min_workers < 1 {
             return None;
         }
         Some(TimeBlock {
             start,
             end,
-            min_agents,
+            min_workers,
         })
     }
 }
@@ -99,19 +99,19 @@ impl TimeRange for TimeBlock {
     }
 }
 
-/// A collection of Agents.
+/// A collection of Workers.
 pub struct Roster {
-    // A mapping of Agents by their names.
-    agents: IndexMap<String, Agent>,
+    // A mapping of Workers by their names.
+    workers: IndexMap<String, Worker>,
 }
 
 /// Represents the availability and needs of a worker in the system.
-pub struct Agent {
-    // A unique identifier for this Agent.
+pub struct Worker {
+    // A unique identifier for this Worker.
     name: String,
-    // Time ranges this Agent is available.
+    // Time ranges this Worker is available.
     availability: IndexMap<WeekTime, Availability>,
-    // Time needed by this Agent, in minutes.
+    // Time needed by this Worker, in minutes.
     time_needed: u32,
 }
 
@@ -155,7 +155,6 @@ impl TimeRange for Availability {
 #[cfg(test)]
 mod test {
     use super::*;
-
     use chrono::Weekday;
 
     fn tblock(day0: Weekday, hour0: u32, day1: Weekday, hour1: u32) -> TimeBlock {
@@ -169,7 +168,6 @@ mod test {
 
     mod test_schedule {
         use super::*;
-
         use Weekday::*;
 
         fn def_blocks() -> (TimeBlock, TimeBlock, TimeBlock, TimeBlock, TimeBlock) {
