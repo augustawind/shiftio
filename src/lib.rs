@@ -1,3 +1,9 @@
+//! Utilities for creating optimal work schedules.
+//!
+//! This library relies heavily on the concept of a _week_ as a unit of time. A _week_ is defined
+//! as a series of 7 _weekdays_ beginning with Monday and ending with Sunday. Weekdays are
+//! represented by variants of the [`chrono::Weekday`] enum.
+
 use std::cmp::Ordering;
 use std::ops::{Add, Sub};
 
@@ -199,22 +205,27 @@ impl Schedule {
 /// Represents all the time ranges and requirements for a Schedule.
 /// Time ranges must be non-overlapping - this is handled by the add methods.
 pub struct Timetable {
-    // A mapping of start times to `Timeblock` objects.
-    // The key for each `Timeblock` is its start time.
-    blocks: IndexMap<WeekTime, Timeblock>,
+    // A mapping of start times to `TimeBlock` objects.
+    // The key for each `TimeBlock` is its start time.
+    blocks: IndexMap<WeekTime, TimeBlock>,
 }
 
 impl Timetable {
+    /// Return a new, empty Timetable.
     pub fn new() -> Self {
         let blocks = IndexMap::new();
         Self { blocks }
     }
 
-    /// Add a [`Timeblock`] to the Timetable.
+    pub fn blocks(&self) -> &IndexMap<WeekTime, TimeBlock> {
+        &self.blocks
+    }
+
+    /// Add a [`TimeBlock`] to the Timetable.
     ///
-    /// If the timeblock overlaps with any ranges already in the Timetable, an Err is returned with a
-    /// vector of all the overlapping timeblocks in ascending order.
-    pub fn add_block(&mut self, block: Timeblock) -> Result<(), Vec<Timeblock>> {
+    /// If the time block overlaps with any blocks in the Timetable, an Err is returned with a vector
+    /// of all the time blocks it overlapped in ascending order.
+    pub fn add_block(&mut self, block: TimeBlock) -> Result<(), Vec<TimeBlock>> {
         let overlapping = self.find_overlapping(&block);
         if !overlapping.is_empty() {
             return Err(overlapping);
