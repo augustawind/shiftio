@@ -5,8 +5,8 @@ use chrono::{DateTime, Datelike, NaiveTime, TimeZone, Timelike, Utc, Weekday};
 use indexmap::IndexMap;
 use time::Duration;
 
-const DEFAULT_YEAR: i32 = 1970;
-const DEFAULT_WEEK: u32 = 1;
+const DUMMY_YEAR: i32 = 1970;
+const DUMMY_WEEK: u32 = 1;
 
 /// Represents a naive time on a day of the week.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -51,8 +51,7 @@ impl WeekTime {
     }
 
     fn dt_from_weekday_and_time(weekday: Weekday, time: NaiveTime) -> Option<DateTime<Utc>> {
-        Utc.isoywd(DEFAULT_YEAR, DEFAULT_WEEK, weekday)
-            .and_time(time)
+        Utc.isoywd(DUMMY_YEAR, DUMMY_WEEK, weekday).and_time(time)
     }
 
     pub fn dt(&self) -> DateTime<Utc> {
@@ -127,7 +126,7 @@ impl TimeRange {
         match duration.num_days().cmp(&days_left) {
             Ordering::Greater => {
                 eprintln!(
-                    "Duration is {} days, but there are only {} days left in the week (from {:?}).",
+                    "Duration is {} days, but only {} day(s) are left in the week (from {:?}).",
                     duration.num_days(),
                     days_left,
                     start.weekday,
