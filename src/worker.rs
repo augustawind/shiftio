@@ -21,10 +21,12 @@ impl Roster {
         Roster { workers }
     }
 
+    /// Return a collection of all the names in the roster as [`&str`].
     pub fn names<'a, B: FromIterator<&'a str>>(&'a self) -> B {
         self.workers.keys().map(AsRef::as_ref).collect()
     }
 
+    /// Return a collection of all the workers in the roster.
     pub fn workers<'a, B: FromIterator<&'a Worker>>(&'a self) -> B {
         self.workers.values().collect()
     }
@@ -142,10 +144,6 @@ mod tests {
 
     fn wk(name: &str) -> Worker {
         Worker::new(name, Duration::hours(40)).unwrap()
-    }
-
-    fn s(s: &str) -> String {
-        s.to_string()
     }
 
     macro_rules! set {
