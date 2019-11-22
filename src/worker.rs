@@ -20,8 +20,16 @@ impl Roster {
         Roster { workers }
     }
 
+    /// Returns a map of names to workers.
     pub fn workers(&self) -> &HashMap<String, Worker> {
         &self.workers
+    }
+
+    /// Returns a reference to the worker with the given `name`.
+    ///
+    /// If no such worker exists, returns [`None`].
+    pub fn get_worker<T: ToString>(&self, name: T) -> Option<&Worker> {
+        self.workers.get(&name.to_string())
     }
 
     /// Adds a worker to the Roster.
@@ -154,6 +162,8 @@ mod tests {
         assert!(roster.add_worker(wk("bob")).is_ok());
         assert!(roster.add_worker(wk("steve")).is_ok());
         assert!(roster.add_worker(wk("jen")).is_ok());
+        assert_eq!(roster.get_worker("jen"), Some(&wk("jen")));
+        assert_eq!(roster.get_worker("brad"), None);
         assert_eq!(
             roster
                 .workers()
@@ -180,7 +190,10 @@ mod tests {
 
         // remove steve and then add him back
         assert_eq!(roster.rm_worker("steve").unwrap(), wk("steve"));
+        assert_eq!(roster.get_worker("steve"), None);
+
         assert!(roster.add_worker(wk("steve")).is_ok());
+        assert_eq!(roster.get_worker("steve"), Some(&wk("steve")));
         assert_eq!(
             roster
                 .workers()
