@@ -129,7 +129,7 @@ impl Sub<WeekTime> for WeekTime {
 /// # Example
 ///
 /// ```rust
-/// use scheduler::{Duration, TimeRange, Weekday::*, WeekTime};
+/// use shiftio::{Duration, TimeRange, Weekday::*, WeekTime};
 ///
 /// #[derive(Debug, Clone, PartialEq, Eq)]
 /// struct MyTimeRange {
