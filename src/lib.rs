@@ -285,10 +285,19 @@ mod test {
 
         #[test]
         fn test_from_duration() {
+            // happy path
             let start = wt();
             let duration = Duration::hours(8);
             let range = TimeRange::from_duration(start, duration).unwrap();
-            assert!(range.end() - range.start() == Duration::hours(8));
+            assert_eq!(range.end() - range.start(), Duration::hours(8));
+
+            // happy path (maximum possible duration)
+            let start = wt_with(Weekday::Sun, 20);
+            let duration = Duration::hours(4);
+            let range = TimeRange::from_duration(start, duration).unwrap();
+            assert_eq!(range.end.weekday, Weekday::Mon);
+            assert_eq!(range.end.time.num_seconds_from_midnight(), 0);
+            assert_eq!(range.end - range.start, Duration::hours(4));
 
             let start = wt();
             let duration = Duration::zero();
@@ -308,14 +317,14 @@ mod test {
             let duration = Duration::days(2);
             assert!(
                 TimeRange::from_duration(start, duration).is_none(),
-                "it should fail if duration is next week (days)"
+                "it should fail if duration is next week (> 1 day)"
             );
 
             let start = wt_with(Weekday::Sun, 20);
             let duration = Duration::hours(5);
             assert!(
                 TimeRange::from_duration(start, duration).is_none(),
-                "it should fail if duration is next week (time)"
+                "it should fail if duration is next week (< 1 day)"
             );
         }
 
