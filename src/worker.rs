@@ -126,6 +126,7 @@ impl Availability {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     fn wk(name: &str) -> Worker {
         Worker::new(name, Duration::hours(40)).unwrap()
@@ -145,53 +146,48 @@ mod tests {
         }}
     }
 
-    mod test_roster {
-        use super::*;
-        use std::collections::HashSet;
+    #[test]
+    fn test_roster() {
+        let mut roster = Roster::new();
 
-        #[test]
-        fn test_names_unique() {
-            let mut roster = Roster::new();
+        // populate the roster
+        assert!(roster.add_worker(wk("bob")).is_ok());
+        assert!(roster.add_worker(wk("steve")).is_ok());
+        assert!(roster.add_worker(wk("jen")).is_ok());
+        assert_eq!(
+            roster
+                .workers()
+                .keys()
+                .cloned()
+                .collect::<HashSet<String>>(),
+            set![s("bob"), s("steve"), s("jen")],
+        );
 
-            // populate the roster
-            assert!(roster.add_worker(wk("bob")).is_ok());
-            assert!(roster.add_worker(wk("steve")).is_ok());
-            assert!(roster.add_worker(wk("jen")).is_ok());
-            assert_eq!(
-                roster
-                    .workers()
-                    .keys()
-                    .cloned()
-                    .collect::<HashSet<String>>(),
-                set![s("bob"), s("steve"), s("jen")],
-            );
+        // try to add another steve
+        assert_eq!(
+            roster.add_worker(wk("steve")),
+            Err(wk("steve")),
+            "should return the dupe worker when adding a worker with the same name",
+        );
+        assert_eq!(
+            roster
+                .workers()
+                .keys()
+                .cloned()
+                .collect::<HashSet<String>>(),
+            set![s("bob"), s("steve"), s("jen")],
+        );
 
-            // try to add another steve
-            assert_eq!(
-                roster.add_worker(wk("steve")),
-                Err(wk("steve")),
-                "should return the dupe worker when adding a worker with the same name",
-            );
-            assert_eq!(
-                roster
-                    .workers()
-                    .keys()
-                    .cloned()
-                    .collect::<HashSet<String>>(),
-                set![s("bob"), s("steve"), s("jen")],
-            );
-
-            // remove steve and then add him back
-            assert_eq!(roster.rm_worker("steve").unwrap(), wk("steve"));
-            assert!(roster.add_worker(wk("steve")).is_ok());
-            assert_eq!(
-                roster
-                    .workers()
-                    .keys()
-                    .cloned()
-                    .collect::<HashSet<String>>(),
-                set![s("bob"), s("steve"), s("jen")],
-            );
-        }
+        // remove steve and then add him back
+        assert_eq!(roster.rm_worker("steve").unwrap(), wk("steve"));
+        assert!(roster.add_worker(wk("steve")).is_ok());
+        assert_eq!(
+            roster
+                .workers()
+                .keys()
+                .cloned()
+                .collect::<HashSet<String>>(),
+            set![s("bob"), s("steve"), s("jen")],
+        );
     }
 }
